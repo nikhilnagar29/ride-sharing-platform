@@ -28,83 +28,140 @@ class Ride:
                  vehicle_type: VehicleType = VehicleType.SEDAN,
                  ride_type: RideType = RideType.REGULAR):
         self.id = str(uuid4())
-        self.rider = rider
-        self.driver = None
-        self.pickup_location = pickup_location
-        self.dropoff_location = dropoff_location
-        self.vehicle_type = vehicle_type
-        self.ride_type = ride_type
-        self.status = RideStatus.REQUESTED
-        self.request_time = datetime.now()
-        self.start_time = None
-        self.end_time = None
-        self.fare = 0.0
-        self.distance = self._calculate_distance(pickup_location, dropoff_location)
-        self.observers = []
+        self._rider = rider
+        self._driver = None
+        self._pickup_location = pickup_location
+        self._dropoff_location = dropoff_location
+        self._vehicle_type = vehicle_type
+        self._ride_type = ride_type
+        self._status = RideStatus.REQUESTED
+        self._request_time = datetime.now()
+        self._start_time = None
+        self._end_time = None
+        self._fare = 0.0
+        self._distance = self._calculate_distance(pickup_location, dropoff_location)
+        self._observers = []
     
     def _calculate_distance(self, point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
         """Calculate Euclidean distance between two points"""
         return ((point2[0] - point1[0]) ** 2 + (point2[1] - point1[1]) ** 2) ** 0.5
     
     def assign_driver(self, driver: Driver) -> bool:
-        if self.status != RideStatus.REQUESTED:
+        if self._status != RideStatus.REQUESTED:
             return False
         
-        self.driver = driver
-        self.status = RideStatus.DRIVER_ASSIGNED
+        self._driver = driver
+        self._status = RideStatus.DRIVER_ASSIGNED
         driver.set_availability(False)
         self._notify_observers()
         return True
     
     def start_ride(self) -> bool:
-        if self.status != RideStatus.DRIVER_ASSIGNED:
+        if self._status != RideStatus.DRIVER_ASSIGNED:
             return False
         
-        self.status = RideStatus.DRIVER_EN_ROUTE
+        self._status = RideStatus.DRIVER_EN_ROUTE
         self._notify_observers()
         return True
     
     def pickup_rider(self) -> bool:
-        if self.status != RideStatus.DRIVER_EN_ROUTE:
+        if self._status != RideStatus.DRIVER_EN_ROUTE:
             return False
         
-        self.status = RideStatus.RIDE_IN_PROGRESS
-        self.start_time = datetime.now()
+        self._status = RideStatus.RIDE_IN_PROGRESS
+        self._start_time = datetime.now()
         self._notify_observers()
         return True
     
     def complete_ride(self) -> bool:
-        if self.status != RideStatus.RIDE_IN_PROGRESS:
+        if self._status != RideStatus.RIDE_IN_PROGRESS:
             return False
         
-        self.status = RideStatus.COMPLETED
-        self.end_time = datetime.now()
-        if self.driver:
-            self.driver.set_availability(True)
-            self.driver.ride_history.append(self.id)
+        self._status = RideStatus.COMPLETED
+        self._end_time = datetime.now()
+        if self._driver:
+            self._driver.set_availability(True)
+            self._driver.ride_history.append(self.id)
         
-        self.rider.ride_history.append(self.id)
+        self._rider.ride_history.append(self.id)
         self._notify_observers()
         return True
     
     def cancel_ride(self) -> bool:
-        if self.status in [RideStatus.COMPLETED, RideStatus.CANCELLED]:
+        if self._status in [RideStatus.COMPLETED, RideStatus.CANCELLED]:
             return False
         
-        self.status = RideStatus.CANCELLED
-        if self.driver:
-            self.driver.set_availability(True)
+        self._status = RideStatus.CANCELLED
+        if self._driver:
+            self._driver.set_availability(True)
         
         self._notify_observers()
         return True
     
     def register_observer(self, observer):
-        self.observers.append(observer)
+        self._observers.append(observer)
     
     def remove_observer(self, observer):
-        if observer in self.observers:
-            self.observers.remove(observer)
+        if observer in self._observers:
+            self._observers.remove(observer)
     
     def _notify_observers(self):
-        for observer in self.observers:
-            observer.update(self) 
+        for observer in self._observers:
+            observer.update(self)
+            
+    # Properties to access private attributes
+    @property
+    def rider(self):
+        return self._rider
+    
+    @property
+    def driver(self):
+        return self._driver
+    
+    @property
+    def pickup_location(self):
+        return self._pickup_location
+    
+    @property
+    def dropoff_location(self):
+        return self._dropoff_location
+    
+    @property
+    def vehicle_type(self):
+        return self._vehicle_type
+    
+    @property
+    def ride_type(self):
+        return self._ride_type
+    
+    @property
+    def status(self):
+        return self._status
+    
+    @property
+    def request_time(self):
+        return self._request_time
+    
+    @property
+    def start_time(self):
+        return self._start_time
+    
+    @property
+    def end_time(self):
+        return self._end_time
+    
+    @property
+    def fare(self):
+        return self._fare
+    
+    @fare.setter
+    def fare(self, value):
+        self._fare = value
+    
+    @property
+    def distance(self):
+        return self._distance
+    
+    @property
+    def observers(self):
+        return self._observers 
