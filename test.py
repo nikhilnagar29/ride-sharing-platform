@@ -17,21 +17,28 @@ class TestRideSharingPlatform(unittest.TestCase):
         self.user_manager = UserManager()
         self.ride_manager = RideManager()
         
-        # Create test riders
-        self.rider1 = self.user_manager.register_rider("Test Rider 1", "111-111-1111", (0.0, 0.0))
-        self.rider2 = self.user_manager.register_rider("Test Rider 2", "222-222-2222", (5.0, 5.0))
+        # Create test riders with proper lat/lon coordinates
+        # Central coordinates (New York City area as an example)
+        self.rider1 = self.user_manager.register_rider("Test Rider 1", "111-111-1111", (40.7128, -74.0060))
+        self.rider2 = self.user_manager.register_rider("Test Rider 2", "222-222-2222", (40.7300, -73.9950))
         
-        # Create test drivers
+        # Create test drivers within 10km of the riders
+        # Driver1 is about 3km from rider1
         self.driver1 = self.user_manager.register_driver("Test Driver 1", "333-333-3333", 
                                                       "TEST001", "Test Car 1", 
-                                                      VehicleType.SEDAN.value, 4, (1.0, 1.0))
+                                                      VehicleType.SEDAN.value, 4, (40.7400, -74.0080))
+        # Driver2 is about 5km from rider1
         self.driver2 = self.user_manager.register_driver("Test Driver 2", "444-444-4444", 
                                                       "TEST002", "Test Car 2", 
-                                                      VehicleType.SUV.value, 6, (6.0, 6.0))
+                                                      VehicleType.SUV.value, 6, (40.7600, -73.9800))
         
         # Register drivers with ride manager
         self.ride_manager.register_driver(self.driver1)
         self.ride_manager.register_driver(self.driver2)
+        
+        # Standard pickup and dropoff locations for tests
+        self.pickup_location = (40.7128, -74.0060)  # NYC
+        self.dropoff_location = (40.8000, -73.9000)  # About 10km away
     
     def test_rider_registration(self):
         """Test that riders can be registered and retrieved"""
@@ -47,7 +54,7 @@ class TestRideSharingPlatform(unittest.TestCase):
         """Test ride request with nearest driver strategy"""
         self.ride_manager.set_driver_matching_strategy(NearestDriverStrategy())
         
-        ride = self.ride_manager.request_ride(self.rider1, (0.0, 0.0), (10.0, 10.0), VehicleType.SEDAN)
+        ride = self.ride_manager.request_ride(self.rider1, self.pickup_location, self.dropoff_location, VehicleType.SEDAN)
         
         self.assertIsNotNone(ride)
         self.assertEqual(ride.status, RideStatus.DRIVER_ASSIGNED)
@@ -61,7 +68,7 @@ class TestRideSharingPlatform(unittest.TestCase):
         
         self.ride_manager.set_driver_matching_strategy(HighestRatedDriverStrategy())
         
-        ride = self.ride_manager.request_ride(self.rider1, (0.0, 0.0), (10.0, 10.0), VehicleType.SEDAN)
+        ride = self.ride_manager.request_ride(self.rider1, self.pickup_location, self.dropoff_location, VehicleType.SEDAN)
         
         self.assertIsNotNone(ride)
         self.assertEqual(ride.status, RideStatus.DRIVER_ASSIGNED)
@@ -69,7 +76,7 @@ class TestRideSharingPlatform(unittest.TestCase):
     
     def test_ride_lifecycle(self):
         """Test the complete lifecycle of a ride"""
-        ride = self.ride_manager.request_ride(self.rider1, (0.0, 0.0), (10.0, 10.0), VehicleType.SEDAN)
+        ride = self.ride_manager.request_ride(self.rider1, self.pickup_location, self.dropoff_location, VehicleType.SEDAN)
         ride_id = ride.id
         
         # Start ride
@@ -87,21 +94,36 @@ class TestRideSharingPlatform(unittest.TestCase):
     
     def test_pricing_strategies(self):
         """Test different pricing strategies"""
+        # Use the same route and rider for all pricing tests to ensure fair comparison
+        
         # Base pricing
         self.ride_manager.set_pricing_strategy(BasePricingStrategy())
-        ride1 = self.ride_manager.request_ride(self.rider1, (0.0, 0.0), (10.0, 10.0), VehicleType.SEDAN)
+        ride1 = self.ride_manager.request_ride(self.rider1, self.pickup_location, self.dropoff_location, VehicleType.SEDAN)
         self.ride_manager.complete_ride(ride1.id)
         base_fare = ride1.fare
         
-        # Surge pricing
-        self.ride_manager.set_pricing_strategy(SurgePricingDecorator(BasePricingStrategy(), 1.5))
-        ride2 = self.ride_manager.request_ride(self.rider2, (5.0, 5.0), (15.0, 15.0), VehicleType.SEDAN)
+        # Reset ride manager to ensure clean state
+        RideManager._instance = None
+        self.ride_manager = RideManager()
+        self.ride_manager.register_driver(self.driver1)
+        
+        # Surge pricing (1.5x)
+        base_strategy = BasePricingStrategy()
+        surge_strategy = SurgePricingDecorator(base_strategy, 1.5)
+        self.ride_manager.set_pricing_strategy(surge_strategy)
+        ride2 = self.ride_manager.request_ride(self.rider1, self.pickup_location, self.dropoff_location, VehicleType.SEDAN)
         self.ride_manager.complete_ride(ride2.id)
         surge_fare = ride2.fare
         
-        # Discount pricing
-        self.ride_manager.set_pricing_strategy(DiscountDecorator(BasePricingStrategy(), 10.0))
-        ride3 = self.ride_manager.request_ride(self.rider1, (0.0, 0.0), (10.0, 10.0), VehicleType.SEDAN)
+        # Reset ride manager again
+        RideManager._instance = None
+        self.ride_manager = RideManager()
+        self.ride_manager.register_driver(self.driver1)
+        
+        # Discount pricing (10% off)
+        discount_strategy = DiscountDecorator(BasePricingStrategy(), 10.0)
+        self.ride_manager.set_pricing_strategy(discount_strategy)
+        ride3 = self.ride_manager.request_ride(self.rider1, self.pickup_location, self.dropoff_location, VehicleType.SEDAN)
         self.ride_manager.complete_ride(ride3.id)
         discount_fare = ride3.fare
         
@@ -111,14 +133,14 @@ class TestRideSharingPlatform(unittest.TestCase):
     
     def test_ride_factory(self):
         """Test the ride factory creates appropriate ride types"""
-        regular_ride = RideFactory.create_regular_ride(self.rider1, (0.0, 0.0), (10.0, 10.0), VehicleType.SEDAN)
-        carpool_ride = RideFactory.create_carpool_ride(self.rider2, (5.0, 5.0), (15.0, 15.0), VehicleType.SUV)
+        regular_ride = RideFactory.create_regular_ride(self.rider1, self.pickup_location, self.dropoff_location, VehicleType.SEDAN)
+        carpool_ride = RideFactory.create_carpool_ride(self.rider2, self.pickup_location, self.dropoff_location, VehicleType.SUV)
         
         self.assertEqual(regular_ride.ride_type.value, "REGULAR")
         self.assertEqual(carpool_ride.ride_type.value, "CARPOOL")
         
         # Test that carpool rides enforce appropriate vehicle types
-        bike_carpool = RideFactory.create_carpool_ride(self.rider1, (0.0, 0.0), (10.0, 10.0), VehicleType.BIKE)
+        bike_carpool = RideFactory.create_carpool_ride(self.rider1, self.pickup_location, self.dropoff_location, VehicleType.BIKE)
         self.assertEqual(bike_carpool.vehicle_type, VehicleType.SEDAN)  # Should default to sedan
 
 if __name__ == '__main__':

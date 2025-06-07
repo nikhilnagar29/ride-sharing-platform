@@ -3,6 +3,7 @@ from typing import Tuple, List, Optional
 from uuid import uuid4
 from datetime import datetime
 from models.user import Rider, Driver
+import math
 
 class RideStatus(Enum):
     REQUESTED = "REQUESTED"
@@ -43,8 +44,23 @@ class Ride:
         self._observers = []
     
     def _calculate_distance(self, point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
-        """Calculate Euclidean distance between two points"""
-        return ((point2[0] - point1[0]) ** 2 + (point2[1] - point1[1]) ** 2) ** 0.5
+        """Calculate distance in kilometers between two points using the Haversine formula"""
+        # Unpack the coordinates
+        lat1, lon1 = point1
+        lat2, lon2 = point2
+        
+        # Convert latitude and longitude from degrees to radians
+        lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+        
+        # Haversine formula
+        dlon = lon2 - lon1
+        dlat = lat2 - lat1
+        a = math.sin(dlat / 2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2
+        c = 2 * math.asin(math.sqrt(a))
+        
+        # Radius of Earth in kilometers
+        r = 6371.0
+        return c * r
     
     def assign_driver(self, driver: Driver) -> bool:
         if self._status != RideStatus.REQUESTED:
