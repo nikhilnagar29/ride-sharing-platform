@@ -60,6 +60,25 @@ class RideCreate(BaseModel):
     surge_multiplier: Optional[float] = Field(None, description="Surge pricing multiplier (if applicable)")
     discount_percentage: Optional[float] = Field(None, description="Discount percentage (if applicable)")
 
+class FareEstimateRequest(BaseModel):
+    pickup_location: Tuple[float, float] = Field(..., description="Pickup location (latitude, longitude)")
+    dropoff_location: Tuple[float, float] = Field(..., description="Dropoff location (latitude, longitude)")
+    vehicle_type: VehicleTypeEnum = Field(VehicleTypeEnum.SEDAN, description="Requested vehicle type")
+    pricing_strategy: PricingStrategyEnum = Field(
+        PricingStrategyEnum.BASE, 
+        description="Pricing strategy to use"
+    )
+    surge_multiplier: Optional[float] = Field(None, description="Surge pricing multiplier (if applicable)")
+    discount_percentage: Optional[float] = Field(None, description="Discount percentage (if applicable)")
+
+class FareEstimateResponse(BaseModel):
+    estimated_fare: float
+    distance: float
+    vehicle_type: str
+    pricing_strategy: str
+    base_fare: float
+    per_km_rate: float
+
 class DriverInfo(BaseModel):
     id: str
     name: str
@@ -141,7 +160,7 @@ async def request_ride(ride_data: RideCreate):
 @router.get("/", response_model=List[RideResponse])
 async def get_all_rides():
     """Get all rides"""
-    # print("Total Riders:", len(user_manager.get_all_riders()), "Total Drivers:", len(user_manager.get_all_drivers()))
+    print("Total Riders:", len(user_manager.get_all_riders()), "Total Drivers:", len(user_manager.get_all_drivers()))
     rides = list(ride_manager.rides.values())
     return [convert_to_response(ride) for ride in rides]
 
@@ -158,6 +177,56 @@ async def get_ride(ride_id: str = Path(..., description="The ID of the ride to g
     if not ride:
         raise HTTPException(status_code=404, detail="Ride not found")
     return convert_to_response(ride)
+
+@router.post("/estimate", response_model=FareEstimateResponse)
+async def estimate_fare(fare_request: FareEstimateRequest):
+    """Estimate the fare for a ride without creating a ride request"""
+    try:
+        # Create a temporary ride object to calculate distance
+        from models.ride import Ride, VehicleType, RideType
+        from models.user import Rider
+        
+        # Create a temporary rider (not saved)
+        temp_rider = Rider("Temporary", "0000000000")
+        
+        # Create a temporary ride to calculate distance
+        vehicle_type = VehicleType[fare_request.vehicle_type]
+        temp_ride = Ride(
+            temp_rider, 
+            fare_request.pickup_location, 
+            fare_request.dropoff_location, 
+            vehicle_type,
+            RideType.REGULAR
+        )
+        
+        # Set pricing strategy
+        base_strategy = BasePricingStrategy()
+        if fare_request.pricing_strategy == PricingStrategyEnum.SURGE:
+            multiplier = fare_request.surge_multiplier or 1.5
+            strategy = SurgePricingDecorator(base_strategy, multiplier)
+        elif fare_request.pricing_strategy == PricingStrategyEnum.DISCOUNT:
+            percentage = fare_request.discount_percentage or 10.0
+            strategy = DiscountDecorator(base_strategy, percentage)
+        else:
+            strategy = base_strategy
+        
+        # Calculate estimated fare
+        estimated_fare = strategy.calculate_fare(temp_ride)
+        
+        # Get base price components for transparency
+        base_fare = base_strategy._get_base_fare(vehicle_type)
+        per_km_rate = base_strategy._get_per_km_rate(vehicle_type)
+        
+        return FareEstimateResponse(
+            estimated_fare=estimated_fare,
+            distance=temp_ride.distance,
+            vehicle_type=fare_request.vehicle_type,
+            pricing_strategy=fare_request.pricing_strategy,
+            base_fare=base_fare,
+            per_km_rate=per_km_rate
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.put("/{ride_id}/start", response_model=RideResponse)
 async def start_ride(ride_id: str = Path(..., description="The ID of the ride to start")):

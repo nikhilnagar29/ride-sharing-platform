@@ -42,6 +42,20 @@ class LocationUpdate(BaseModel):
 class AvailabilityUpdate(BaseModel):
     is_available: bool = Field(..., description="Availability status")
 
+class AvailableDriversRequest(BaseModel):
+    location: Tuple[float, float] = Field(..., description="Current location (latitude, longitude)")
+    max_distance: float = Field(15.0, description="Maximum distance in kilometers", ge=0.0, le=50.0)
+    vehicle_type: Optional[str] = Field(None, description="Filter by vehicle type")
+
+class AvailableDriverResponse(BaseModel):
+    id: str
+    name: str
+    vehicle_id: str
+    vehicle_model: str
+    vehicle_type: str
+    rating: float
+    distance: float
+
 # Routes
 @router.post("/", response_model=DriverResponse)
 async def create_driver(driver_data: DriverCreate):
@@ -95,7 +109,7 @@ async def update_driver_location(
 
 @router.put("/{driver_id}/availability", response_model=DriverResponse)
 async def update_driver_availability(
-    availability_data: AvailabilityUpdate,
+    availability_update: AvailabilityUpdate,
     driver_id: str = Path(..., description="The ID of the driver to update")
 ):
     """Update a driver's availability status"""
@@ -103,15 +117,57 @@ async def update_driver_availability(
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
     
-    driver.set_availability(availability_data.is_available)
+    driver.set_availability(availability_update.is_available)
     
-    # Register or unregister with ride manager
-    if availability_data.is_available:
+    if availability_update.is_available:
         ride_manager.register_driver(driver)
     else:
         ride_manager.unregister_driver(driver)
     
     return convert_to_response(driver)
+
+@router.post("/available", response_model=List[AvailableDriverResponse])
+async def find_available_drivers(request: AvailableDriversRequest):
+    """Find available drivers within a specified range"""
+    try:
+        # Get all available drivers from the ride manager
+        all_available_drivers = ride_manager.get_available_drivers()
+        
+        # Import necessary modules for distance calculation
+        from models.ride import Ride
+        from models.user import Rider
+        
+        # Create a temporary ride object to use its distance calculation method
+        temp_rider = Rider("Temporary", "0000000000")
+        temp_ride = Ride(temp_rider, request.location, (0.0, 0.0))
+        
+        # Filter drivers by distance and optionally by vehicle type
+        nearby_drivers = []
+        for driver in all_available_drivers:
+            # Calculate distance between request location and driver location
+            distance = temp_ride._calculate_distance(request.location, driver.get_location())
+            
+            # Check if driver is within the specified range
+            if distance <= request.max_distance:
+                # If vehicle type filter is provided, check if it matches
+                if request.vehicle_type is None or driver.vehicle.vehicle_type == request.vehicle_type:
+                    nearby_drivers.append({
+                        "id": driver.id,
+                        "name": driver.name,
+                        "vehicle_id": driver.vehicle.vehicle_id,
+                        "vehicle_model": driver.vehicle.model,
+                        "vehicle_type": driver.vehicle.vehicle_type,
+                        "rating": driver.rating,
+                        "distance": distance
+                    })
+        
+        # Sort by distance (closest first)
+        nearby_drivers.sort(key=lambda d: d["distance"])
+        
+        return nearby_drivers
+    
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # Helper function
 def convert_to_response(driver: Driver) -> DriverResponse:
