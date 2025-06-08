@@ -12,6 +12,7 @@ A Python-based implementation of a ride-sharing service platform that demonstrat
 - Notification System
 - In-Memory Data Management
 - Proper Encapsulation with Private Attributes
+- RESTful API with FastAPI
 
 ## Design Patterns Used
 
@@ -38,7 +39,7 @@ Detailed UML diagrams are provided to visualize the system architecture:
 
 See UML_DIAGRAMS.md for the diagrams and USING_UML_DIAGRAMS.md for instructions on how to use them.
 
-## How to Run
+## How to Run Core Application
 
 ```
 python main.py
@@ -49,3 +50,39 @@ python main.py
 ```
 python test.py
 ```
+
+## API
+
+The platform also includes a RESTful API built with FastAPI:
+
+### Setup
+
+1. Create a virtual environment:
+
+   ```
+   python -m venv venv
+   ```
+
+2. Activate the virtual environment:
+
+   - On Windows: `venv\Scripts\activate`
+   - On macOS/Linux: `source venv/bin/activate`
+
+3. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+
+### Running the API
+
+```
+python run_api.py
+```
+
+The API will be available at:
+
+- API: http://localhost:8000
+- Interactive documentation: http://localhost:8000/docs
+- Alternative documentation: http://localhost:8000/redoc
+
+See API_README.md for more details on available endpoints and usage examples.
